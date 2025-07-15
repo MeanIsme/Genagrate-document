@@ -1,5 +1,8 @@
 const express = require('express');
 const axios = require('axios');
+const PDFDocument = require('pdfkit');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -82,8 +85,8 @@ async function crawlRepoDirectories(repoOwner, repoName, path = '', sourceLangua
     return migrationResults;
 }
 
-// Route to generate migration guides for all files in the GitHub repository
-app.post('/generate-migration-guide', async (req, res) => {
+// Route to generate migration guides and return as PDF
+app.post('/generate-migration-guide-pdf', async (req, res) => {
     const { sourceLanguage, targetLanguage, githubRepoOwner, githubRepoName } = req.body;
 
     if (!sourceLanguage || !targetLanguage || !githubRepoOwner || !githubRepoName) {
@@ -98,13 +101,35 @@ app.post('/generate-migration-guide', async (req, res) => {
             return res.status(404).json({ error: 'No files found in the GitHub repository or failed to fetch repository data.' });
         }
 
-        // Return the migration guides for all files
-        res.json({
-            migrationResults
+        // Create a PDF document
+        const doc = new PDFDocument();
+        const filename = `migration-guide-${githubRepoName}.pdf`;
+
+        // Set the response headers for the PDF download
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+        // Pipe the PDF document to the response
+        doc.pipe(res);
+
+        // Add title to the PDF
+        doc.fontSize(18).text('Migration Guide', { align: 'center' });
+        doc.moveDown();
+
+        // Iterate over the migration results and add them to the PDF
+        migrationResults.forEach((result, index) => {
+            doc.fontSize(14).text(`${index + 1}. ${result.fileName}`);
+            doc.moveDown();
+            doc.fontSize(12).text(result.migrationGuide);
+            doc.moveDown();
+            doc.addPage();  // Add a new page for each file's guide
         });
+
+        // Finalize the PDF and send it
+        doc.end();
     } catch (error) {
         console.error('Error generating migration guide:', error);
-        res.status(500).json({ error: 'An error occurred while generating the migration guide for the repository.' });
+        res.status(500).json({ error: 'An error occurred while generating the migration guide.' });
     }
 });
 
